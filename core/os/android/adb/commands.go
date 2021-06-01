@@ -18,22 +18,16 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"fmt"
-	"net"
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/gapid/core/app"
 	"github.com/google/gapid/core/fault"
 	"github.com/google/gapid/core/log"
 	"github.com/google/gapid/core/os/android"
 	"github.com/google/gapid/core/os/device"
 	"github.com/google/gapid/core/os/shell"
-	"github.com/google/gapid/gapis/perfetto"
-
-	common_pb "protos/perfetto/common"
 )
 
 const (
@@ -341,31 +335,6 @@ func (b *binding) SupportsPerfetto(ctx context.Context) bool {
 	return os.GetAPIVersion() >= 28
 }
 
-func (b *binding) ConnectPerfetto(ctx context.Context) (*perfetto.Client, error) {
-	if !b.SupportsPerfetto(ctx) {
-		return nil, fmt.Errorf("Perfetto is not supported on this device")
-	}
-
-	localPort, err := LocalFreeTCPPort()
-	if err != nil {
-		return nil, err
-	}
-
-	if err := b.Forward(ctx, localPort, perfettoPort); err != nil {
-		return nil, err
-	}
-	cleanup := app.Cleanup(func(ctx context.Context) {
-		b.RemoveForward(ctx, localPort)
-	})
-
-	conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%v", localPort))
-	if err != nil {
-		cleanup.Invoke(ctx)
-		return nil, err
-	}
-	return perfetto.NewClient(ctx, conn, cleanup)
-}
-
 // EnsurePerfettoPersistent ensures that Perfetto daemons, traced and
 // traced_probes, are running. Note that there is a delay between setting the
 // system property and daemons finish starting, hence this function needs to be
@@ -384,83 +353,7 @@ func (b *binding) EnsurePerfettoPersistent(ctx context.Context) error {
 // regardless of which it is registered from.
 func (b *binding) QueryPerfettoServiceState(ctx context.Context) (*device.PerfettoCapability, error) {
 	result := b.To.Configuration.PerfettoCapability
-	if result == nil {
-		result = &device.PerfettoCapability{
-			GpuProfiling: &device.GPUProfiling{},
-		}
-	}
-
-	if !b.SupportsPerfetto(ctx) {
-		return result, fmt.Errorf("Perfetto is not supported on this device")
-	}
-
-	gpu, err := b.QueryPerfettoGpuProfilingDataSources(ctx)
-	if err != nil {
-		return result, log.Errf(ctx, err, "Failed to query perfetto GPU profiling data sources.")
-	}
-	result.GpuProfiling = gpu
-
-	if b.Instance().GetConfiguration().GetOS().GetAPIVersion() >= 30 {
-		// SurfaceFlinger frame lifecycle perfetto producer is mandated by Android 11 CTS, hence it will
-		// always exist.
-		result.HasFrameLifecycle = true
-
-		// This has anecdotally not worked well in Q, but appears to be fine in R.
-		result.CanDownloadWhileTracing = true
-	}
-
-	services, err := b.Shell("service", "list").Call(ctx)
-	if err != nil {
-		return result, log.Errf(ctx, err, "Failed to query service list when trying to know power rail capability.")
-	}
-	if strings.Contains(services, "android.hardware.power.stats.IPowerStats/default") {
-		result.HasPowerRail = true
-	}
 	return result, nil
-}
-
-// QueryPerfettoGpuProfilingDataSources queries and returns the data sources
-// that support the GPU profiling functionailities, it includes:
-//     1) gpu.counters
-//     2) gpu.renderstages
-//     3) android.gpu.memory
-func (b *binding) QueryPerfettoGpuProfilingDataSources(ctx context.Context) (*device.GPUProfiling, error) {
-	gpu := &device.GPUProfiling{}
-	encoded, err := b.Shell("perfetto", "--query-raw", "|", "base64").Call(ctx)
-	if err != nil {
-		return gpu, log.Errf(ctx, err, "adb shell perfetto returned error: %s", encoded)
-	}
-	decoded, _ := base64.StdEncoding.DecodeString(encoded)
-	state := &common_pb.TracingServiceState{}
-	if err = proto.Unmarshal(decoded, state); err != nil {
-		return gpu, log.Errf(ctx, err, "Unmarshal returned error")
-	}
-
-	for _, ds := range state.GetDataSources() {
-		desc := ds.GetDsDescriptor()
-		if desc.GetName() == gpuRenderStagesDataSourceDescriptorName {
-			gpu.HasRenderStage = true
-			continue
-		}
-		if desc.GetName() == gpuMemTotalDataSourceDescriptorName {
-			gpu.HasGpuMemTotal = true
-			continue
-		}
-		counters := desc.GetGpuCounterDescriptor().GetSpecs()
-		if len(counters) != 0 {
-			if gpu.GpuCounterDescriptor == nil {
-				gpu.GpuCounterDescriptor = &device.GpuCounterDescriptor{}
-			}
-			// We mirror the Perfetto GpuCounterDescriptor proto into AGI, hence
-			// they are binary format compatible.
-			data, err := proto.Marshal(desc.GetGpuCounterDescriptor())
-			if err != nil {
-				continue
-			}
-			proto.UnmarshalMerge(data, gpu.GpuCounterDescriptor)
-		}
-	}
-	return gpu, nil
 }
 
 // Currently using Android Q/10, API 29 as ANGLE support cut-off
