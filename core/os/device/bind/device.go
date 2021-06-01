@@ -22,7 +22,6 @@ import (
 	"github.com/google/gapid/core/app"
 	"github.com/google/gapid/core/os/device"
 	"github.com/google/gapid/core/os/shell"
-	"github.com/google/gapid/gapis/perfetto"
 )
 
 // Device represents a connection to an attached device.
@@ -68,9 +67,6 @@ type Device interface {
 	SupportsPerfetto(ctx context.Context) bool
 	// SupportsAngle returns true if this device will work with ANGLE
 	SupportsAngle(ctx context.Context) bool
-	// ConnectPerfetto connects to a Perfetto service running on this device
-	// and returns an open socket connection to the service.
-	ConnectPerfetto(ctx context.Context) (*perfetto.Client, error)
 	// PushFile will transfer the local file at sourcePath to the remote
 	// machine at destPath
 	PushFile(ctx context.Context, sourcePath, destPath string) error

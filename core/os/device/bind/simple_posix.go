@@ -18,12 +18,8 @@ package bind
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
-	"net"
 	"path/filepath"
-
-	"github.com/google/gapid/gapis/perfetto"
 )
 
 const (
@@ -84,15 +80,3 @@ func (b *Simple) SupportsAngle(ctx context.Context) bool {
 	return false
 }
 
-// ConnectPerfetto connects to a Perfetto service running on this device
-// and returns an open socket connection to the service.
-func (b *Simple) ConnectPerfetto(ctx context.Context) (*perfetto.Client, error) {
-	if !b.SupportsPerfetto(ctx) {
-		return nil, fmt.Errorf("Perfetto is not supported on this device")
-	}
-	conn, err := net.Dial("unix", perfettoSocket)
-	if err != nil {
-		return nil, err
-	}
-	return perfetto.NewClient(ctx, conn, nil)
-}
