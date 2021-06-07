@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# ref https://developers.google.com/protocol-buffers/docs/gotutorial
+# go install google.golang.org/protobuf/cmd/protoc-gen-go
+
 list=(
 ./core/stream/stream.proto
 ./core/image/image.proto
