@@ -29,6 +29,8 @@ const (
 	ExecutedDispatch
 	ExecutedCommandBuffer
 	Submission
+	SyncCommand
+	BeginEndRenderpass
 )
 
 // IsDrawCall returns true if the command is a draw call.
@@ -71,3 +73,9 @@ func (f CmdFlags) IsExecutedCommandBuffer() bool { return (f & ExecutedCommandBu
 
 // IsSubmission returns true if the command is a submission
 func (f CmdFlags) IsSubmission() bool { return (f & Submission) != 0 }
+
+// IsSyncCommand returns true if the command is a synchronisation command
+func (f CmdFlags) IsSyncCommand() bool { return (f & SyncCommand) != 0 }
+
+// IsBeginEndRenderpass returns true if the command starts or ends a renderpass
+func (f CmdFlags) IsBeginEndRenderpass() bool { return (f & BeginEndRenderpass) != 0 }
